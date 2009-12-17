@@ -18,7 +18,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-*/
+ */
 
 package org.tearsinrain.fasttuple.generate;
 
@@ -99,8 +99,8 @@ public class TupleClass {
 	    throw new RuntimeException(e);
 	}
 
-	_class._extends(owner);
 	model = _class.owner();
+	_class._implements(model.ref("org.tearsinrain.fasttuple.BaseTuple"));
 	_class.field(JMod.PRIVATE | JMod.STATIC | JMod.FINAL, int.class, "SIZE", lit(config.size));
 	_class.annotate(Immutable.class);
 	buildJavadoc(_class, config, className, "A high-performance, immutable " + className);
@@ -109,7 +109,10 @@ public class TupleClass {
 	narrowedClass = _class.narrow(genericTypes);
 	variables = ImmutableList.copyOf(buildVariables(null, _class));
 
-	_class.method(JMod.PUBLIC | JMod.FINAL, int.class, "getSize").body()._return(JExpr.ref("SIZE"));
+	JMethod getSize = _class.method(JMod.PUBLIC | JMod.FINAL, int.class, "getSize");
+	getSize.body()._return(JExpr.ref("SIZE"));
+	getSize.annotate(Override.class);
+	
 	buildConstructor();
 	buildGetters();
 	buildHasher();
@@ -266,10 +269,11 @@ public class TupleClass {
 
 	JBlock body = eq.body();
 	body._if(JExpr._this().eq(other))._then()._return(lit(true));
-	body._if((other._instanceof(_class.outer())).not())._then()._return(lit(false));
+	
+	JClass baseTuple = model.ref("org.tearsinrain.fasttuple.BaseTuple");
+	body._if((other._instanceof(baseTuple)).not())._then()._return(lit(false));
 
-	JVar otherTuple = body.decl(JMod.FINAL, _class.outer(), "otherTuple", JExpr.cast(_class
-		.outer(), other));
+	JVar otherTuple = body.decl(JMod.FINAL, baseTuple, "otherTuple", JExpr.cast(baseTuple, other));
 	body._if(otherTuple.invoke("getSize").ne(_class.staticRef("SIZE")))._then()._return(
 		lit(false));
 
