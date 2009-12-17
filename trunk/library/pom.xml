@@ -49,9 +49,9 @@
 						<phase>generate-sources</phase>
 						<configuration>
 							<mainClass>org.tearsinrain.fasttuple.generate.Generator</mainClass>
-							<sourceRoot>${project.build.directory}/generated-sources/</sourceRoot>
+							<sourceRoot>${project.build.directory}/generated-sources/fasttuple-generator</sourceRoot>
 							<arguments>
-								<argument>${project.build.directory}/generated-sources</argument>
+								<argument>${project.build.directory}/generated-sources/fasttuple-generator</argument>
 								<argument>${project.parent.basedir}/LICENSE.txt</argument>
 							</arguments>
 						</configuration>
@@ -74,7 +74,7 @@
 						</goals>
 						<configuration>
 							<sources>
-								<source>${project.build.directory}/generated-sources</source>
+								<source>${project.build.directory}/generated-sources/fasttuple-generator</source>
 							</sources>
 						</configuration>
 					</execution>
@@ -102,7 +102,7 @@
 						<argument>-verbose</argument>
 						<argument>-config</argument>
 						<argument>${project.basedir}/config/org.eclipse.jdt.core.prefs</argument>
-						<argument>${project.build.directory}/generated-sources</argument>
+						<argument>${project.build.directory}/generated-sources/fasttuple-generator</argument>
 					</arguments>
 					<skip>${fasttuple.skipeclipseformatter}</skip>
 				</configuration>
