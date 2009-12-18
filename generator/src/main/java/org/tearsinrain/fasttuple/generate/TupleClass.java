@@ -207,7 +207,7 @@ public class TupleClass {
 	}
 
 	JDocComment comment = m.javadoc();
-	comment.add(String.format("Returns a new %s containing each of the paramaters. \n\n",
+	comment.add(String.format("Returns a new %s containing each of the paramaters.",
 		className));
 
 	if (!config.nullable) {
