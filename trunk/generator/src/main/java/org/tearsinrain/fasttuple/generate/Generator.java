@@ -56,6 +56,7 @@ import java.security.acl.Owner;
 import java.util.List;
 
 import javax.annotation.Nonnull;
+import javax.annotation.concurrent.Immutable;
 
 public class Generator {
 
@@ -74,12 +75,12 @@ public class Generator {
 	    _package = model._package(config.packageName(packagePrefix));
 
 	    try {
-		_class = _package._class(JMod.PUBLIC | JMod.ABSTRACT, "Tuple");
+		_class = _package._class(JMod.PUBLIC, "Builder");
 	    } catch (JClassAlreadyExistsException e) {
 		throw new RuntimeException(e);
 	    }
-
-	    _class.method(JMod.PUBLIC | JMod.ABSTRACT, int.class, "getSize");
+	    makeSiblingInfrastructure();
+	    _class.annotate(Immutable.class);
 	    tupleClasses = Lists.newArrayList();
 
 	    for (Integer i = 1; i <= config.size; i++) {
@@ -88,8 +89,36 @@ public class Generator {
 		makeFromMethod(tupleClassConfig);
 	    }
 
-	    TupleClass.buildJavadoc(_class, config, "Tuple",
+	    TupleClass.buildJavadoc(_class, config, "Builder",
 		    "A provider of high-performance, immutable tuples");
+	}
+
+	private void makeSiblingInfrastructure() {
+	    _class.field(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, _class, "instance", JExpr
+		    ._new(_class));
+	    _class.constructor(JMod.PRIVATE);
+	    if (!config.nullable) {
+		makeSiblingAccessor(new Config(true, config.comparable, config.serializable,
+			config.size), "nullable");
+	    }
+	    if (!config.comparable) {
+		makeSiblingAccessor(new Config(config.nullable, true, config.serializable,
+			config.size), "comparable");
+	    }
+	    if (!config.serializable) {
+		makeSiblingAccessor(new Config(config.nullable, config.comparable, true,
+			config.size), "serializable");
+	    }
+	}
+
+	private void makeSiblingAccessor(Config retConfig, String name) {
+	    JClass retType = model.ref(retConfig.packageName(packagePrefix) + ".Builder");
+	    JMethod sibling = _class.method(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, retType, name);
+	    sibling.annotate(Nonnull.class);
+	    String comment = String.format(
+		    "Return a Builder that is just like this one, but also %s.", name);
+	    sibling.javadoc().add(comment);
+	    sibling.body()._return(retType.staticRef("instance"));
 	}
 
 	private void makeFromMethod(Config tupleClassConfig) {
@@ -116,8 +145,7 @@ public class Generator {
 
 	    JDocComment comment = m.javadoc();
 	    comment.add(String.format(
-		    "Returns a new %s containing each of the supplied paramaters. \n\n", c
-			    .getName()));
+		    "Returns a new %s containing each of the supplied paramaters.", c.getName()));
 	    if (!tupleClassConfig.nullable) {
 		comment.addThrows(NullPointerException.class).add(
 			"if any of the supplied paramaters are null.");

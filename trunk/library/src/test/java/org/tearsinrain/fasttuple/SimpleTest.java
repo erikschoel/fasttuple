@@ -30,8 +30,8 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.junit.Test;
-import org.tearsinrain.fasttuple.comparable.Tuple;
-import org.tearsinrain.fasttuple.comparable.Tuple.Pair;
+import org.tearsinrain.fasttuple.comparable.Builder;
+import org.tearsinrain.fasttuple.comparable.Builder.Pair;
 
 import com.google.common.collect.ImmutableList;
 
@@ -40,7 +40,7 @@ public class SimpleTest {
 	public void test_getters() {
 		Integer a = Integer.valueOf(3);
 		Double b = Double.valueOf(4.5);
-		Pair<Integer, Double> p = Tuple.from(a, b);
+		Pair<Integer, Double> p = Builder.from(a, b);
 		assertEquals(a, p.a);
 		assertEquals(b, p.b);
 		assertEquals(a, p.get1());
@@ -53,8 +53,8 @@ public class SimpleTest {
 	public void test_eq() {
 		Integer a = Integer.valueOf(3);
 		Double b = Double.valueOf(4.5);
-		Pair<Integer, Double> p1 = Tuple.from(a, b);
-		Pair<Integer, Double> p2 = Tuple.from(a, b);
+		Pair<Integer, Double> p1 = Builder.from(a, b);
+		Pair<Integer, Double> p2 = Builder.from(a, b);
 		assertTrue(p1.equals(p2));
 		assertTrue(p2.equals(p1));
 		assertFalse(p1.equals(null));
@@ -63,15 +63,15 @@ public class SimpleTest {
 
 	@Test
 	public void test_stringers() {
-		assertEquals("(1, 2)", Tuple.from(1, 2).toString());
-		assertEquals("<1-2]", Tuple.from(1, 2).toString("<", "-", "]"));
+		assertEquals("(1, 2)", Builder.from(1, 2).toString());
+		assertEquals("<1-2]", Builder.from(1, 2).toString("<", "-", "]"));
 	}
 
 	@Test
 	public void test_zipper() {
-		ImmutableList<Pair<String, Integer>> expected = ImmutableList.of(Tuple
-				.from("Alice", 8), Tuple.from("Bob", 12), Tuple.from("Charlie",
-				35), Tuple.from("Dana", 49));
+		ImmutableList<Pair<String, Integer>> expected = ImmutableList.of(Builder
+				.from("Alice", 8), Builder.from("Bob", 12), Builder.from("Charlie",
+				35), Builder.from("Dana", 49));
 
 		List<Integer> ages = Arrays.asList(8, 12, 35, 49);
 		List<String> names = Arrays.asList("Alice", "Bob", "Charlie", "Dana");
