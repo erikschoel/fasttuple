@@ -41,6 +41,7 @@ import org.tearsinrain.jcodemodel.JBlock;
 import org.tearsinrain.jcodemodel.JClass;
 import org.tearsinrain.jcodemodel.JClassAlreadyExistsException;
 import org.tearsinrain.jcodemodel.JCodeModel;
+import org.tearsinrain.jcodemodel.JConditional;
 import org.tearsinrain.jcodemodel.JDefinedClass;
 import org.tearsinrain.jcodemodel.JDocComment;
 import org.tearsinrain.jcodemodel.JExpr;
@@ -55,15 +56,16 @@ import org.tearsinrain.jcodemodel.JType;
 import org.tearsinrain.jcodemodel.JTypeVar;
 import org.tearsinrain.jcodemodel.JVar;
 
-import com.google.common.base.Function;
 import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
-import com.google.common.collect.Collections2;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 // add javadoc for zip methods, 
+// add more tests
+// add maven coverage report
+// add nullness annotation verifier
 public class TupleClass {
     private final Config config;
     private final String className;
@@ -73,51 +75,31 @@ public class TupleClass {
     private final ImmutableList<JTypeVar> genericTypes;
     private final ImmutableList<JVar> variables;
 
-    private final ImmutableList<String> names = ImmutableList.of("Single", "Pair", "Triple",
-	    "Quadruple", "Quintuple", "Sextuple", "Septuple", "Octuple", "Nonuple", "Decuple",
-	    "Undecuple", "Duodecuple");
-    private final int maxN = names.size();
-    private final ImmutableList<String> ordinals = ImmutableList.of("first", "second", "third",
-	    "fourth", "fifth", "sixth", "seventh", "eighth", "nineth", "tenth", "eleventh",
-	    "twelfth");
-
-    private final Function<String, String> toTitleCase = new Function<String, String>() {
-	public String apply(String ord) {
-	    return Character.toTitleCase(ord.charAt(0)) + ord.substring(1);
-	}
-    };
-    private final ImmutableList<String> capitalOrdinals = ImmutableList.copyOf(Collections2
-	    .transform(ordinals, toTitleCase));
-
-    public TupleClass(Config config, JDefinedClass owner) {
+    private final int maxN;
+    public TupleClass(Config config, int maxN, JDefinedClass owner) {
+	this.maxN = maxN;
 	this.config = config;
-	className = names.get(config.size - 1);
+	className = Constants.names.get(config.size - 1);
 
 	try {
-	    _class = owner._class(JMod.PUBLIC | JMod.STATIC | JMod.FINAL, className);
+	    _class = owner._class(JMod.PUBLIC | JMod.STATIC, className);
 	} catch (JClassAlreadyExistsException e) {
 	    throw new RuntimeException(e);
 	}
 
 	model = _class.owner();
-	_class._implements(model.ref("org.tearsinrain.fasttuple.BaseTuple"));
-	_class.field(JMod.PRIVATE | JMod.STATIC | JMod.FINAL, int.class, "SIZE", lit(config.size));
 	_class.annotate(Immutable.class);
 	buildJavadoc(_class, config, className, "A high-performance, immutable " + className);
-
+	_class.method(JMod.PUBLIC | JMod.FINAL, int.class, "size").body()._return(lit(config.size));
+	
 	genericTypes = generify(_class);
 	narrowedClass = _class.narrow(genericTypes);
 	variables = ImmutableList.copyOf(buildVariables(null, _class));
-
-	JMethod getSize = _class.method(JMod.PUBLIC | JMod.FINAL, int.class, "getSize");
-	getSize.body()._return(JExpr.ref("SIZE"));
-	getSize.annotate(Override.class);
 	
 	buildConstructor();
 	buildGetters();
 	buildHasher();
 	buildEquals();
-	buildCloner();
 	buildZippers();
 	buildStringers();
 
@@ -203,16 +185,19 @@ public class TupleClass {
 	for (Pair<JTypeVar, JVar> pair : typesAndVariables()) {
 	    JVar param = m.param(JMod.FINAL, pair.get1(), pair.get2().name());
 	    param.annotate(config.nullable ? Nullable.class : Nonnull.class);
+	    if (!config.nullable) {
+		body._if(pair.get2().eq(_null()))._then()._throw(JExpr._new(model.ref(NullPointerException.class)));
+	    }
 	    body.assign(JExpr.refthis(pair.get2().name()), param);
 	}
 
 	JDocComment comment = m.javadoc();
-	comment.add(String.format("Returns a new %s containing each of the paramaters.",
+	comment.add(String.format("Returns a new %s containing each of the parameters.",
 		className));
 
 	if (!config.nullable) {
 	    comment.addThrows(NullPointerException.class).add(
-		    "if any of the supplied paramaters are null.");
+		    "if any of the supplied parameters are null.");
 	}
     }
 
@@ -220,13 +205,13 @@ public class TupleClass {
 	int i = 1;
 
 	for (Pair<JTypeVar, JVar> pair : typesAndVariables()) {
-	    for (String suffix : Arrays.asList(String.valueOf(i), capitalOrdinals.get(i - 1))) {
+	    for (String suffix : Arrays.asList(String.valueOf(i), Constants.capitalOrdinals.get(i - 1))) {
 		String name = "get" + suffix;
 		JMethod m = _class.method(JMod.PUBLIC | JMod.FINAL, pair.get1(), name);
 		m.annotate(config.nullable ? Nullable.class : Nonnull.class);
 		m.body()._return(pair.get2());
 		m.javadoc().add(
-			String.format("Return the %s item in this %s.", ordinals.get(i - 1),
+			String.format("Return the %s item in this %s.", Constants.ordinals.get(i - 1),
 				className));
 	    }
 	    i += 1;
@@ -270,15 +255,10 @@ public class TupleClass {
 	JBlock body = eq.body();
 	body._if(JExpr._this().eq(other))._then()._return(lit(true));
 	
-	JClass baseTuple = model.ref("org.tearsinrain.fasttuple.BaseTuple");
-	body._if((other._instanceof(baseTuple)).not())._then()._return(lit(false));
-
-	JVar otherTuple = body.decl(JMod.FINAL, baseTuple, "otherTuple", JExpr.cast(baseTuple, other));
-	body._if(otherTuple.invoke("getSize").ne(_class.staticRef("SIZE")))._then()._return(
-		lit(false));
-
 	JType wildTuple = _class.narrow(Collections.nCopies(config.size, model.wildcard()));
-	JVar xx = body.decl(JMod.FINAL, wildTuple, "xx", JExpr.cast(wildTuple, otherTuple));
+	body._if((other._instanceof(wildTuple)).not())._then()._return(lit(false));
+
+	JVar xx = body.decl(JMod.FINAL, wildTuple, "xx", JExpr.cast(wildTuple, other));
 
 	if (config.nullable) {
 	    for (JVar variable : variables) {
@@ -302,22 +282,12 @@ public class TupleClass {
 	}
     }
 
-    private void buildCloner() {
-	JMethod m = _class.method(JMod.PUBLIC | JMod.FINAL, narrowedClass, "clone");
-	m.annotate(Override.class);
-	m._throws(CloneNotSupportedException.class);
-	m.body()._throw(JExpr._new(model._ref(CloneNotSupportedException.class)));
-	JDocComment doc = m.javadoc();
-	doc.add("clone is not supported; this method will immediately throw an exception.");
-	doc.addThrows(CloneNotSupportedException.class).add("always.");
-    }
-
     private void buildComparator() {
 	JMethod m = _class.method(JMod.PUBLIC | JMod.FINAL, int.class, "compareTo");
 	m.annotate(Override.class);
 
 	JVar other = m.param(JMod.FINAL, narrowedClass, "other");
-	other.annotate(Nullable.class);
+	other.annotate(Nonnull.class);
 
 	JBlock body = m.body();
 	body._if(other.eq(_null()))._then()._throw(
@@ -328,11 +298,14 @@ public class TupleClass {
 
 	for (JVar variable : variables) {
 	    JBlock parent = body;
-
+	    
 	    if (config.nullable) {
-		parent = body._if(variable.eq(Null).cor(other.ref(variable).eq(Null)))._then();
-		parent._if(variable.eq(Null))._then()._return(lit(-1));
-		parent._if(other.ref(variable).eq(Null))._then()._return(lit(1));
+		JConditional nullTester = body._if(variable.eq(Null).cor(other.ref(variable).eq(Null)));
+		JBlock oneIsNull = nullTester._then();
+		JBlock bothNull = oneIsNull._if(variable.eq(Null).cand(other.ref(variable).eq(Null)).not())._then();
+		bothNull._if(variable.eq(Null))._then()._return(lit(-1));
+		bothNull._if(other.ref(variable).eq(Null))._then()._return(lit(1));
+		parent = nullTester._else();
 	    }
 
 	    parent.assign(result, variable.invoke("compareTo").arg(other.ref(variable)));
@@ -350,7 +323,7 @@ public class TupleClass {
 	} catch (JClassAlreadyExistsException e) {
 	    throw new RuntimeException();
 	}
-
+	
 	ImmutableList<JTypeVar> types = generify(proxy);
 	proxy._implements(Serializable.class);
 
@@ -362,10 +335,12 @@ public class TupleClass {
 	    fields.add(field);
 	}
 
-	int hash = config.hashCode();
+	long hash = config.hashCode();
 	hash = (hash << 32) - hash;
 	proxy.field(JMod.PRIVATE | JMod.STATIC | JMod.FINAL, long.class, "serialVersionUID",
 		lit(hash));
+	_class.field(JMod.PRIVATE | JMod.STATIC | JMod.FINAL, long.class, "serialVersionUID",
+		lit(hash * hash));
 
 	JMethod ctor = proxy.constructor(JMod.NONE);
 	JVar ctorArg = ctor.param(JMod.FINAL, narrowedClass, "x");
@@ -374,6 +349,13 @@ public class TupleClass {
 	for (JVar field : fields) {
 	    ctorBody.assign(field, ctorArg.ref(field));
 	}
+	
+	JMethod resolver = proxy.method(JMod.PRIVATE, Object.class, "readResolve");
+	JInvocation resolverReturn = JExpr._new(_class);
+	for (JExpression variable: variables()) {
+	    resolverReturn.arg(variable);
+	}
+	resolver.body()._return(resolverReturn);
 
 	JMethod writeReplace = _class.method(JMod.PRIVATE | JMod.FINAL, Object.class,
 		"writeReplace");
@@ -384,6 +366,7 @@ public class TupleClass {
 	readObject._throws(InvalidObjectException.class);
 	readObject.body()._throw(
 		JExpr._new(model.ref(InvalidObjectException.class)).arg(lit("Proxy required")));
+	readObject.annotate(SuppressWarnings.class).param("value", "unused");
     }
 
     private void buildTupleAdder(Config argConfig) {
@@ -396,7 +379,7 @@ public class TupleClass {
 	ImmutableList<String> adderGenericTypeNames = resultConfig.types().subList(config.size,
 		resultConfig.size);
 
-	String argClassName = names.get(argConfig.size - 1);
+	String argClassName = Constants.names.get(argConfig.size - 1);
 	JClass argType = model.directClass(argClassName);
 	List<JClass> argNarrower = Lists.newArrayList();
 
@@ -404,7 +387,7 @@ public class TupleClass {
 	    argNarrower.add(model.directClass(name));
 	}
 
-	String resultClassName = names.get(resultConfig.size - 1);
+	String resultClassName = Constants.names.get(resultConfig.size - 1);
 	JClass resultType = model.directClass(resultClassName);
 	List<JClass> resultNarrower = Lists.newArrayList();
 
@@ -417,7 +400,7 @@ public class TupleClass {
 	generify(adder, resultConfig, adderGenericTypeNames);
 
 	JVar arg = adder.param(JMod.FINAL, argType.narrow(argNarrower), "other");
-	arg.annotate(Nullable.class);
+	arg.annotate(Nonnull.class);
 
 	List<JExpression> argParts = Lists.newArrayList();
 
@@ -451,7 +434,7 @@ public class TupleClass {
 	ImmutableList<String> adderGenericTypeNames = resultConfig.types().subList(config.size,
 		resultConfig.size);
 
-	String resultClassName = names.get(resultConfig.size - 1);
+	String resultClassName = Constants.names.get(resultConfig.size - 1);
 	JClass resultType = model.directClass(resultClassName);
 	List<JClass> narrower = Lists.newArrayList();
 
@@ -525,7 +508,7 @@ public class TupleClass {
 	}
 
 	iterableCtor.body().assign(iteratorField, maker);
-	JMethod iterableIterator = iterable.method(JMod.PUBLIC | JMod.FINAL, iteratorType,
+	JMethod iterableIterator = iterable.method(JMod.PUBLIC, iteratorType,
 		"iterator");
 	iterableIterator.body()._return(iteratorField);
 	iterableIterator.annotate(Override.class);
@@ -552,7 +535,7 @@ public class TupleClass {
 	}
 
 	// hasNext implementation
-	JMethod hasNext = iterator.method(JMod.PUBLIC | JMod.FINAL, boolean.class, "hasNext");
+	JMethod hasNext = iterator.method(JMod.PUBLIC, boolean.class, "hasNext");
 	hasNext.annotate(Override.class);
 	JExpression hasNextReturnValue = iteratorFields.get(0).invoke("hasNext");
 
@@ -563,7 +546,7 @@ public class TupleClass {
 	hasNext.body()._return(hasNextReturnValue);
 
 	// next implementation
-	JMethod next = iterator.method(JMod.PUBLIC | JMod.FINAL, narrowedClass, "next");
+	JMethod next = iterator.method(JMod.PUBLIC, narrowedClass, "next");
 	next.annotate(Override.class);
 	JInvocation builder = JExpr._new(narrowedClass);
 
@@ -574,7 +557,7 @@ public class TupleClass {
 	next.body()._return(builder);
 
 	// remove implementation
-	JMethod remove = iterator.method(JMod.PUBLIC | JMod.FINAL, model.VOID, "remove");
+	JMethod remove = iterator.method(JMod.PUBLIC, model.VOID, "remove");
 	remove.annotate(Override.class);
 	remove.body()._throw(JExpr._new(model.ref(UnsupportedOperationException.class)));
 
@@ -723,7 +706,7 @@ public class TupleClass {
 	    if (m != null) {
 		item = m.param(JMod.FINAL, genericType, name);
 	    } else {
-		item = c.field(JMod.FINAL | JMod.PUBLIC, genericType, name);
+		item = c.field(JMod.FINAL | JMod.PUBLIC | JMod.TRANSIENT, genericType, name);
 	    }
 
 	    variables.add(item);

@@ -59,7 +59,23 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.Immutable;
 
 public class Generator {
-
+    public static class TupleInterface {
+	private final Config config;
+	private final JCodeModel model;
+	public TupleInterface(Config config, JCodeModel owner) {
+	    Config clean = new Config(false, config.comparable, false, config.size);
+	    this.config = clean;
+	    this.model = owner;
+	 
+	    JPackage _package = model._package(config.packageName(TupleClassContainer.packagePrefix));
+	    JDefinedClass _class = null;
+	    //try {
+		//_class = _package._interface(JMod.PUBLIC, config.
+	    //}
+	}
+    }
+    
+    
     public static class TupleClassContainer {
 	private static final ImmutableList<String> packagePrefix = ImmutableList.of("org",
 		"tearsinrain", "fasttuple");
@@ -79,13 +95,13 @@ public class Generator {
 	    } catch (JClassAlreadyExistsException e) {
 		throw new RuntimeException(e);
 	    }
-	    makeSiblingInfrastructure();
+	    //makeSiblingInfrastructure();
 	    _class.annotate(Immutable.class);
 	    tupleClasses = Lists.newArrayList();
 
 	    for (Integer i = 1; i <= config.size; i++) {
 		Config tupleClassConfig = config.clone(i);
-		tupleClasses.add(new TupleClass(tupleClassConfig, _class));
+		tupleClasses.add(new TupleClass(tupleClassConfig, maxN, _class));
 		makeFromMethod(tupleClassConfig);
 	    }
 
@@ -94,7 +110,7 @@ public class Generator {
 	}
 
 	private void makeSiblingInfrastructure() {
-	    _class.field(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, _class, "instance", JExpr
+	    _class.field(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, _class, "Builder", JExpr
 		    ._new(_class));
 	    _class.constructor(JMod.PRIVATE);
 	    if (!config.nullable) {
@@ -113,18 +129,18 @@ public class Generator {
 
 	private void makeSiblingAccessor(Config retConfig, String name) {
 	    JClass retType = model.ref(retConfig.packageName(packagePrefix) + ".Builder");
-	    JMethod sibling = _class.method(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, retType, name);
+	    JMethod sibling = _class.method(JMod.PUBLIC | JMod.FINAL, retType, name);
 	    sibling.annotate(Nonnull.class);
 	    String comment = String.format(
 		    "Return a Builder that is just like this one, but also %s.", name);
 	    sibling.javadoc().add(comment);
-	    sibling.body()._return(retType.staticRef("instance"));
+	    sibling.body()._return(retType.staticRef("Builder"));
 	}
 
 	private void makeFromMethod(Config tupleClassConfig) {
 	    TupleClass c = tupleClasses.get(tupleClassConfig.size - 1);
 
-	    JMethod m = _class.method(defaultModifiers, c.narrow(), "from");
+	    JMethod m = _class.method(JMod.PUBLIC | JMod.FINAL | JMod.STATIC, c.narrow(), "from");
 	    c.generify(m);
 
 	    // arguments...gah, I long for python's zip or common lisp's loop or
@@ -154,8 +170,6 @@ public class Generator {
 	}
     }
 
-    private static final int defaultModifiers = JMod.PUBLIC | JMod.STATIC | JMod.FINAL;
-
     private static String readFile(File f) throws IOException {
 	BufferedReader reader = new BufferedReader(new FileReader(f));
 	StringBuilder sb = new StringBuilder((int) f.length());
@@ -170,7 +184,8 @@ public class Generator {
     }
 
     private static final Logger logger = Logger.getLogger(Generator.class);
-
+    private static final int maxN = 8;
+    
     public static void main(String[] args) throws IOException {
 	Logger.getRootLogger().addAppender(new ConsoleAppender(new PatternLayout("[%-p] %m%n")));
 
@@ -186,7 +201,7 @@ public class Generator {
 
 	String license = readFile(licenseFile);
 
-	for (Config c : Config.all(12)) {
+	for (Config c : Config.all(maxN)) {
 	    new TupleClassContainer(c, cm);
 	    CodeWriter sourceWriter = new PrologCodeWriter(new FileCodeWriter(output), license);
 	    CodeWriter resourceWriter = new FileCodeWriter(output);
